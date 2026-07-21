@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>메차 카멜레온 (Mecha Chameleon)</title>
+    <!-- MediaPipe & Teachable Machine & Firebase CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@0.8/dist/teachablemachine-pose.min.js"></script>
+
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        body { background-color: #121212; color: #fff; font-family: 'Pretendard', sans-serif; overflow: hidden; }
+
+        /* 1. 메인 대기 화면 */
+        #start-screen {
+            position: absolute; width: 100vw; height: 100vh;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            background: linear-gradient(135deg, #1f1c2c, #928dab); z-index: 100;
+        }
+        #start-screen h1 { font-size: 3.5rem; text-shadow: 0 0 20px rgba(0,255,200,0.8); margin-bottom: 20px; }
+        .start-btn {
+            position: absolute; bottom: 80px; padding: 18px 50px; font-size: 1.8rem; font-weight: bold;
+            color: #fff; background: #00b894; border: none; border-radius: 50px;
+            cursor: pointer; box-shadow: 0 10px 20px rgba(0,0,0,0.3); transition: 0.3s;
+        }
+        .start-btn:hover { background: #55efc4; transform: translateY(-5px); }
+
+        /* 2. 게임 메인 화면 */
+        #game-screen { display: none; width: 100vw; height: 100vh; position: relative; }
+        #canvas-board { width: 100%; height: 100%; display: block; }
+
+        /* 상단 UI 바 */
+        #ui-top-bar {
+            position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 20px; background: rgba(0, 0, 0, 0.75);
+            padding: 12px 30px; border-radius: 25px; border: 1px solid rgba(255, 255, 255, 0.2);
+            font-size: 1.2rem; font-weight: bold; z-index: 10;
+        }
+        .ui-value { color: #00cec9; }
+
+        /* 숨는 사람 전용 개별 타이머 */
+        #personal-timer-box {
+            position: absolute; top: 75px; left: 50%; transform: translateX(-50%);
+            background: rgba(234, 32, 39, 0.85); padding: 8px 20px; border-radius: 15px;
+            font-size: 1.1rem; font-weight: bold; display: none; z-index: 10;
+        }
+
+        /* 웹캠 뷰 (하단 우측) */
+        #webcam-container {
+            position: absolute; bottom: 15px; right: 15px;
+            width: 200px; height: 150px; border: 3px solid #00cec9;
+            border-radius: 12px; overflow: hidden; background: #000; z-index: 10;
+        }
+        #webcam { width: 100%; height: 100%; transform: scaleX(-1); object-fit: cover; }
+
+        /* 3. 팔레트 UI (원형 색상 휠, 스포이트, 슬라이더) */
+        #paint-ui {
+            position: absolute; top: 20px; left: 20px; width: 280px;
+            background: rgba(20, 20, 20, 0.9); border: 2px solid #55efc4;
+            border-radius: 15px; padding: 15px; display: none; flex-direction: column; gap: 12px;
+            z-index: 10; backdrop-filter: blur(5px);
+        }
+        #paint-ui h3 { font-size: 1.1rem; color: #55efc4; text-align: center; }
+        .color-wheel-container { display: flex; justify-content: center; align-items: center; }
+        #color-wheel { border-radius: 50%; cursor: crosshair; border: 2px solid #fff; }
+        .preview-row { display: flex; justify-content: space-between; align-items: center; }
+        #color-preview { width: 50px; height: 35px; border-radius: 6px; border: 2px solid #fff; }
+        .btn-eyedropper {
+            padding: 8px 12px; background: #0984e3; color: white; border: none;
+            border-radius: 8px; cursor: pointer; font-size: 0.9rem; font-weight: bold;
+        }
+        .btn-eyedropper:hover { background: #74b9ff; }
+        .slider-group { display: flex; flex-direction: column; gap: 5px; font-size: 0.85rem; }
+        .slider-group input { width: 100%; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <!-- 1. 시작 화면 -->
+    <div id="start-screen">
+        <h1>메차 카멜레온</h1>
+        <button class="start-btn" onclick="initGame()">게임 접속하기</button>
+    </div>
+
+    <!-- 2. 인게임 화면 -->
+    <div id="game-screen">
+        <canvas id="canvas-board"></canvas>
+
+        <!-- 상단 정보 바 -->
+        <div id="ui-top-bar">
+            <div>전체 시간: <span id="main-timer" class="ui-value">10:00</span></div>
+            <div>역할: <span id="role-display" class="ui-value">-</span></div>
+            <div>남은 숨은 사람: <span id="survivor-count" class="ui-value">4</span>명</div>
+        </div>
+
+        <!-- 개별 타이머 -->
+        <div id="personal-timer-box">나의 색칠 남은 시간: <span id="personal-timer">03:00</span></div>
+
+        <!-- 고급 팔레트 UI -->
+        <div id="paint-ui">
+            <h3>🎨 카멜레온 페인트 모드</h3>
+            <div class="color-wheel-container">
+                <canvas id="color-wheel" width="160" height="160"></canvas>
+            </div>
+            <div class="preview-row">
+                <div id="color-preview" style="background: #000000;"></div>
+                <button class="btn-eyedropper" onclick="toggleEyedropper()">🖌️ 3D 스포이트</button>
+            </div>
+            <div class="slider-group">
+                <label>브러시 크기: <span id="brush-size-val">15</span>px</label>
+                <input type="range" id="brush-size" min="5" max="40" value="15">
+            </div>
+        </div>
+
+        <!-- 카메라 뷰 -->
+        <div id="webcam-container">
+            <video id="webcam" autoplay playsinline muted></video>
+        </div>
+    </div>
+</div>
+
+<!-- Firebase Modular SDK -->
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getDatabase, ref, set, onValue, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyCAZWS4_kRQ77cpnp1VlfiCixMzXCG-y58",
+        authDomain: "mechcca.firebaseapp.com",
+        projectId: "mechcca",
+        storageBucket: "mechcca.firebasestorage.app",
+        messagingSenderId: "114982116645",
+        appId: "1:114982116645:web:51715383ee1d51efd6cecc",
+        measurementId: "G-HX32TFTTJT"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    window.db = db;
+    window.dbRef = ref;
+    window.dbSet = set;
+    window.dbOnValue = onValue;
+    window.dbUpdate = update;
+</script>
+
+<script>
+// --- 전역 상술 및 데이터 구조 ---
+const TM_URL = "https://teachablemachine.withgoogle.com/models/QaBSPoGjh/";
+const CHAR_IMG_SRC = "https://i.postimg.cc/nrdcqF6s/jemog-eobsneun-dijain-(1).png";
+
+let myRole = "hider"; // "tagger" (술래) or "hider" (숨는사람)
+let playerId = "player_" + Math.floor(Math.random() * 1000);
+let mainGameTime = 600; // 10분
+let personalColorTime = 180; // 3분
+let isTagMovable = false; // 술래 2분 이동제한
+let isFrozen = false; // 5초 포즈 정지 완료 여부
+let isColoringEnded = false; // 3분 색칠 종료 여부
+let isPenaltyWhite = false; // 포즈 이탈 시 흰색 변환 여부
+
+let freezeLandmarks = null;
+let stillStartTime = null;
+let selectedColor = "#000000";
+let brushSize = 15;
+let isEyedropperActive = false;
+
+let tmModel, maxPredictions;
+let charImg = new Image();
+charImg.src = CHAR_IMG_SRC;
+
+// 내 위치 데이터
+let myPos = { x: 300, y: 300, dir: "Stop" };
+
+// --- 게임 초기화 ---
+async function initGame() {
+    document.getElementById('start-screen').style.display = 'none';
+    document.getElementById('game-screen').style.display = 'block';
+
+    // 술래 무작위 지정 (1/5 확률)
+    myRole = (Math.random() < 0.2) ? "tagger" : "hider";
+    let roleText = (myRole === "tagger") ? "술래 👹 (크기 4배)" : "숨는 사람 🥷";
+    document.getElementById('role-display').innerText = roleText;
+    document.getElementById('role-display').style.color = (myRole === "tagger") ? "#ff4757" : "#00cec9";
+
+    initCanvas();
+    initColorWheel();
+    await loadTeachableMachine();
+    initCamera();
+    startMainTimer();
+}
+
+// --- 10분 메인 타이머 ---
+function startMainTimer() {
+    setInterval(() => {
+        if (mainGameTime > 0) {
+            mainGameTime--;
+            let m = String(Math.floor(mainGameTime / 60)).padStart(2, '0');
+            let s = String(mainGameTime % 60).padStart(2, '0');
+            document.getElementById('main-timer').innerText = `${m}:${s}`;
+
+            // 술래는 시작 후 2분(120초) 경과 전까지 이동 제한
+            if (mainGameTime <= 480) {
+                isTagMovable = true;
+            }
+        }
+    }, 1000);
+}
+
+// --- 숨는 사람 개별 3분 타이머 ---
+function startPersonalTimer() {
+    document.getElementById('personal-timer-box').style.display = 'block';
+    document.getElementById('paint-ui').style.display = 'flex';
+
+    let timer = setInterval(() => {
+        if (personalColorTime > 0) {
+            personalColorTime--;
+            let m = String(Math.floor(personalColorTime / 60)).padStart(2, '0');
+            let s = String(personalColorTime % 60).padStart(2, '0');
+            document.getElementById('personal-timer').innerText = `${m}:${s}`;
+        } else {
+            clearInterval(timer);
+            isColoringEnded = true;
+            document.getElementById('paint-ui').style.display = 'none';
+            document.getElementById('personal-timer-box').style.background = "#2d3436";
+            document.getElementById('personal-timer-box').innerText = "색칠 시간 종료! 동일한 포즈를 유지하세요!";
+        }
+    }, 1000);
+}
+
+// --- Teachable Machine 모델 로드 ---
+async function loadTeachableMachine() {
+    const modelURL = TM_URL + "model.json";
+    const metadataURL = TM_URL + "metadata.json";
+    tmModel = await tmpose.load(modelURL, metadataURL);
+    maxPredictions = tmModel.getTotalClasses();
+}
+
+// --- MediaPipe 및 영상 트래킹 ---
+let videoElement = document.getElementById('webcam');
+let lastRightHandState = "";
+
+function initCamera() {
+    const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+    hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.5 });
+    hands.onResults(onHandResults);
+
+    const pose = new Pose({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`});
+    pose.setOptions({ modelComplexity: 1, minDetectionConfidence: 0.5 });
+    pose.onResults(onPoseResults);
+
+    const camera = new Camera(videoElement, {
+        onFrame: async () => {
+            await hands.send({image: videoElement});
+            await pose.send({image: videoElement});
+            if (tmModel) predictTMPose();
+        },
+        width: 640, height: 480
+    });
+    camera.start();
+}
+
+// Teachable Machine 동작 예상 (달리기/방향 전환)
+async function predictTMPose() {
+    const { pose, posenetOutput } = await tmModel.estimatePose(videoElement);
+    const prediction = await tmModel.predict(posenetOutput);
+
+    if (isFrozen) return; // 포즈 고정 시 이동 차단
+
+    if (myRole === "tagger" && !isTagMovable) return; // 술래 2분 이동 제약
+
+    let highestClass = "";
+    let highestProb = 0;
+    for (let i = 0; i < maxPredictions; i++) {
+        if (prediction[i].probability > highestProb) {
+            highestProb = prediction[i].probability;
+            highestClass = prediction[i].className;
+        }
+    }
+
+    // 모션에 따른 위치 변경
+    let speed = (myRole === "tagger") ? 6 : 4;
+    if (highestClass === "Run" || highestClass === "Run_Forward") myPos.y -= speed;
+    if (highestClass === "Turn_Left") myPos.x -= speed;
+    if (highestClass === "Turn_Right") myPos.x += speed;
+}
+
+// 오른손 주먹 쥐기 (술래 잡기: 00000)
+function onHandResults(results) {
+    if (!results.multiHandLandmarks || myRole !== "tagger") return;
+
+    for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+        let label = results.multiHandedness[i].label;
+        if (label === 'Right') {
+            let h1 = results.multiHandLandmarks[i];
+            let compare = [[2,4,17], [5,8,0], [9,12,0], [13,16,0], [17,20,0]];
+            let folding = "";
+
+            for (let [mcp, tip, comp] of compare) {
+                let tip_dist = Math.pow(h1[comp].x - h1[tip].x, 2) + Math.pow(h1[comp].y - h1[tip].y, 2);
+                let mcp_dist = Math.pow(h1[comp].x - h1[mcp].x, 2) + Math.pow(h1[comp].y - h1[mcp].y, 2);
+                folding += (tip_dist > mcp_dist) ? "1" : "0";
+            }
+
+            if (folding === "00000" && lastRightHandState !== "00000") {
+                alert("오른손 주먹 쥐기! 술래 잡기 기술이 발동되었습니다!");
+            }
+            lastRightHandState = folding;
+        }
+    }
+}
+
+// Pose 결과를 받아 5초 고정 및 이탈 감시
+function onPoseResults(results) {
+    if (!results.poseLandmarks) return;
+    let lm = results.poseLandmarks;
+
+    // A. 5초 정지 유지 감지 (숨는 사람)
+    if (myRole === "hider" && !isFrozen) {
+        if (stillStartTime === null) stillStartTime = Date.now();
+        if (Date.now() - stillStartTime > 5000) {
+            isFrozen = true;
+            freezeLandmarks = lm;
+            startPersonalTimer(); // 개별 3분 타이머 실행
+            alert("5초간 포즈를 유지했습니다! 이제 마우스와 팔레트로 색칠하세요.");
+        }
+    }
+
+    // B. 3분 색칠 종료 후 포즈 이탈 감시 (흰색 변환 페널티)
+    if (myRole === "hider" && isColoringEnded && freezeLandmarks) {
+        let diff = Math.abs(lm[15].x - freezeLandmarks[15].x) + Math.abs(lm[16].x - freezeLandmarks[16].x);
+        if (diff > 0.18) {
+            isPenaltyWhite = true; // 몸 전체 흰색으로 변환
+        }
+    }
+}
+
+// --- CANVAS 렌더링 및 페인트 시스템 ---
+let canvas = document.getElementById('canvas-board');
+let ctx = canvas.getContext('2d');
+let offCanvas = document.createElement('canvas'); // 색칠 전용 캔버스
+let offCtx = offCanvas.getContext('2d');
+
+function initCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    offCanvas.width = canvas.width;
+    offCanvas.height = canvas.height;
+
+    // 마우스 색칠 이벤트
+    let isDrawing = false;
+    canvas.addEventListener('mousedown', (e) => {
+        if (isEyedropperActive) {
+            pickColorFromCanvas(e.clientX, e.clientY);
+            return;
+        }
+        if (isFrozen && !isColoringEnded) isDrawing = true;
+    });
+    canvas.addEventListener('mouseup', () => isDrawing = false);
+    canvas.addEventListener('mousemove', (e) => {
+        if (isDrawing) {
+            offCtx.fillStyle = selectedColor;
+            offCtx.beginPath();
+            offCtx.arc(e.clientX, e.clientY, brushSize, 0, Math.PI * 2);
+            offCtx.fill();
+        }
+    });
+
+    requestAnimationFrame(renderLoop);
+}
+
+// 메인 렌더링 루프
+function renderLoop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // 1. 바닥 명화 맵 렌더링 (4분할 그리드)
+    drawMasterpieceMap();
+
+    // 2. 캐릭터 및 색칠 레이어 렌더링
+    let scale = (myRole === "tagger") ? 4.0 : 1.0; // 술래 4배 크기
+    let w = 80 * scale;
+    let h = 80 * scale;
+
+    ctx.save();
+    // 포즈 이탈시 흰색 페널티
+    if (isPenaltyWhite) {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(myPos.x - w/2, myPos.y - h/2, w, h);
+    } else {
+        ctx.drawImage(charImg, myPos.x - w/2, myPos.y - h/2, w, h);
+    }
+    ctx.restore();
+
+    // 색칠 레이어 온탑 (Composite)
+    ctx.drawImage(offCanvas, 0, 0);
+
+    requestAnimationFrame(renderLoop);
+}
+
+// 바닥 명화 패치워크 맵
+function drawMasterpieceMap() {
+    let w = canvas.width / 2;
+    let h = canvas.height / 2;
+
+    // 고흐, 몽크 등의 명화 색상 영역
+    ctx.fillStyle = "#1e3799"; ctx.fillRect(0, 0, w, h); // 별이 빛나는 밤 Zone
+    ctx.fillStyle = "#e55039"; ctx.fillRect(w, 0, w, h); // 절규 Zone
+    ctx.fillStyle = "#78e08f"; ctx.fillRect(0, h, w, h); // 수련 Zone
+    ctx.fillStyle = "#f6b93b"; ctx.fillRect(w, h, w, h); // 해바라기 Zone
+}
+
+// --- 원형 색상 휠 (Color Wheel) 및 스포이트 ---
+function initColorWheel() {
+    let wheel = document.getElementById('color-wheel');
+    let wCtx = wheel.getContext('2d');
+    let radius = wheel.width / 2;
+
+    for (let x = -radius; x < radius; x++) {
+        for (let y = -radius; y < radius; y++) {
+            let dist = Math.sqrt(x * x + y * y);
+            if (dist <= radius) {
+                let angle = Math.atan2(y, x);
+                let hue = (angle * (180 / Math.PI) + 360) % 360;
+                let sat = (dist / radius) * 100;
+                wCtx.fillStyle = `hsl(${hue}, ${sat}%, 50%)`;
+                wCtx.fillRect(x + radius, y + radius, 1, 1);
+            }
+        }
+    }
+
+    wheel.addEventListener('click', (e) => {
+        let rect = wheel.getBoundingClientRect();
+        let x = e.clientX - rect.left;
+        let y = e.clientY - rect.top;
+        let imgData = wCtx.getImageData(x, y, 1, 1).data;
+        selectedColor = `rgb(${imgData[0]}, ${imgData[1]}, ${imgData[2]})`;
+        document.getElementById('color-preview').style.background = selectedColor;
+    });
+
+    document.getElementById('brush-size').addEventListener('input', (e) => {
+        brushSize = e.target.value;
+        document.getElementById('brush-size-val').innerText = brushSize;
+    });
+}
+
+function toggleEyedropper() {
+    isEyedropperActive = !isEyedropperActive;
+    alert(isEyedropperActive ? "3D 스포이트 활성화: 바닥 명화 맵의 원하는 색상을 클릭하세요." : "스포이트 비활성화");
+}
+
+function pickColorFromCanvas(x, y) {
+    let pixel = ctx.getImageData(x, y, 1, 1).data;
+    selectedColor = `rgb(${pixel[0]}, ${pixel[1]}, ${pixel[2]})`;
+    document.getElementById('color-preview').style.background = selectedColor;
+    isEyedropperActive = false;
+}
+</script>
+</body>
+</html>
