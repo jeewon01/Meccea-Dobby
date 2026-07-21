@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>메차 카멜레온 3D - 명화 미술관</title>
+    <title>메차 카멜레온 3D</title>
 
     <!-- Three.js 3D 엔진 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -24,13 +24,9 @@
             background: linear-gradient(135deg, #090a0f, #1b1c2e); z-index: 1000;
         }
         #start-screen h1 { font-size: 3.2rem; text-shadow: 0 0 25px rgba(0, 255, 200, 0.8); margin-bottom: 10px; }
-        #start-screen p { font-size: 1.1rem; color: #a4b0be; margin-bottom: 20px; }
+        #start-screen p { font-size: 1.1rem; color: #a4b0be; margin-bottom: 25px; }
         
-        #status-box {
-            margin-bottom: 15px; padding: 10px 25px; border-radius: 20px;
-            background: rgba(255, 255, 255, 0.08); font-size: 1.05rem; color: #f1c40f; text-align: center;
-        }
-        #wait-count { font-size: 1.2rem; color: #55efc4; font-weight: bold; margin-bottom: 30px; }
+        #wait-count { font-size: 1.3rem; color: #55efc4; font-weight: bold; margin-bottom: 35px; }
 
         /* 버튼 그룹 UI */
         .btn-group { display: flex; gap: 20px; }
@@ -44,8 +40,6 @@
         
         .btn-beta { background: #e67e22; box-shadow: 0 0 25px rgba(230, 126, 34, 0.5); }
         .btn-beta:hover { background: #f39c12; transform: scale(1.05); }
-
-        .start-btn:disabled { background: #636e72 !important; cursor: not-allowed; box-shadow: none !important; transform: none !important; }
 
         /* 2. 3D 게임 화면 */
         #game-screen { display: none; width: 100vw; height: 100vh; position: relative; }
@@ -62,7 +56,7 @@
         .role-tagger { color: #ff4757 !important; }
         .role-hider { color: #2ed573 !important; }
 
-        /* 숨는 사람 전용 3분 타이머 (본인만 확인 가능) */
+        /* 숨는 사람 전용 3분 타이머 (개인별 적용) */
         #personal-timer-box {
             position: absolute; top: 80px; left: 50%; transform: translateX(-50%);
             background: rgba(234, 32, 39, 0.9); padding: 10px 25px; border-radius: 20px;
@@ -94,16 +88,15 @@
 <body>
 
 <div id="app">
-    <!-- 1. 메인 대기 화면 -->
+    <!-- 1. 메인 대기 화면 (권한 확인 절차 삭제) -->
     <div id="start-screen">
         <h1>메차 카멜레온 3D</h1>
         <p>명화 미술관 3D 모션 트래킹 숨바꼭질</p>
-        <div id="status-box">📷 카메라 권한 확인 및 서버 연결 중...</div>
-        <div id="wait-count">현재 서버 접속 대기 인원: <span id="online-users">0</span>명</div>
+        <div id="wait-count">현재 서버 대기 인원: <span id="online-users">0</span>명</div>
         
         <div class="btn-group">
-            <button id="official-btn" class="start-btn btn-official" disabled>🎮 5인 정식 게임 접속하기</button>
-            <button id="beta-btn" class="start-btn btn-beta" disabled>🧪 테스트용 베타 접속하기</button>
+            <button id="official-btn" class="start-btn btn-official">🎮 5인 정식 게임 접속하기</button>
+            <button id="beta-btn" class="start-btn btn-beta">🧪 테스트용 베타 접속하기</button>
         </div>
     </div>
 
@@ -139,7 +132,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getDatabase, ref, set, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-// 제공해주신 파이어베이스 설정
+// 파이어베이스 설정
 const firebaseConfig = {
   apiKey: "AIzaSyCAZWS4_kRQ77cpnp1VlfiCixMzXCG-y58",
   authDomain: "mechcca.firebaseapp.com",
@@ -167,15 +160,14 @@ let scene, camera, renderer;
 let myMesh, myMaterial;
 let otherMeshes = {};
 let myRole = "hider"; 
-let mainTime = 600; // 전체 러닝타임 10분[cite: 1]
-let personalTime = 180; // 개인 색칠 시간 3분[cite: 1]
+let mainTime = 600; // 전체 10분[cite: 1]
+let personalTime = 180; // 개인 색칠 3분[cite: 1]
 let isTagMovable = false; // 술래 2분 이동 제한[cite: 1]
 let isFrozen = false; 
 let isColoringDone = false; 
 let isPenaltyWhite = false;
 
 let videoElement = document.getElementById('webcam');
-let statusBox = document.getElementById('status-box');
 let officialBtn = document.getElementById('official-btn');
 let betaBtn = document.getElementById('beta-btn');
 let onlineUsersEl = document.getElementById('online-users');
@@ -184,59 +176,48 @@ let freezeLandmarks = null;
 let stillStartTime = null;
 let lastRightHandState = "";
 
-// 로드 시 카메라 및 로비 인원 감시 시작
-window.addEventListener('DOMContentLoaded', async () => {
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-        videoElement.srcObject = stream;
-        
-        statusBox.innerText = "✅ 카메라 준비 완료! 원하는 모드를 선택해 접속하세요.";
-        statusBox.style.color = "#2ecc71";
-        officialBtn.disabled = false;
-        betaBtn.disabled = false;
-
-        initMediaPipe();
-    } catch (err) {
-        statusBox.innerText = "❌ 카메라 권한이 필요합니다. 브라우저 설정을 확인해 주세요.";
-        statusBox.style.color = "#e74c3c";
-    }
-
-    // 대기열 및 접속자 카운트 모니터링[cite: 1]
+// 로비 접속자 카운트만 모니터링
+window.addEventListener('DOMContentLoaded', () => {
     const lobbyRef = ref(db, 'lobby/' + myPlayerId);
     set(lobbyRef, { online: true });
     onDisconnect(lobbyRef).remove();
 
     onValue(ref(db, 'lobby'), (snapshot) => {
         const players = snapshot.val() || {};
-        const count = Object.keys(players).length;
-        onlineUsersEl.innerText = count;
-
-        // 5명이 모이면 정식 매칭 준비 완료
-        if (count >= 5) {
-            statusBox.innerText = "🎉 5명이 모두 모였습니다! [5인 정식 게임 접속하기]를 누르세요!";
-        }
+        onlineUsersEl.innerText = Object.keys(players).length;
     });
 });
 
-// A. 정식 5인 게임 접속 버튼 클릭 이벤트[cite: 1]
-officialBtn.addEventListener('click', () => {
+// A. 정식 5인 접속[cite: 1]
+officialBtn.addEventListener('click', async () => {
+    await initWebcamAndMediaPipe();
+    
     onValue(ref(db, 'lobby'), (snapshot) => {
         const players = snapshot.val() || {};
         const playerIds = Object.keys(players);
-
-        // 정식 매칭 시 5명 중 1명을 술래로 지정[cite: 1]
         let taggerId = playerIds[Math.floor(Math.random() * playerIds.length)];
         myRole = (taggerId === myPlayerId) ? "tagger" : "hider";[cite: 1]
         enterGame3D();
     }, { onlyOnce: true });
 });
 
-// B. 테스트용 베타 접속 버튼 클릭 이벤트
-betaBtn.addEventListener('click', () => {
-    // 테스트용: 20% 확률로 무작위 술래 결정[cite: 1]
+// B. 베타 접속 (인원 무관 테스트)
+betaBtn.addEventListener('click', async () => {
+    await initWebcamAndMediaPipe();
     myRole = (Math.random() < 0.2) ? "tagger" : "hider";[cite: 1]
     enterGame3D();
 });
+
+// 게임 시작 시에만 브라우저 표준 권한 요청 실행
+async function initWebcamAndMediaPipe() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        videoElement.srcObject = stream;
+        initMediaPipe();
+    } catch (err) {
+        alert("카메라 권한이 거부되었거나 이용할 수 없습니다.");
+    }
+}
 
 // 3D 인게임 입장
 function enterGame3D() {
@@ -262,7 +243,7 @@ function enterGame3D() {
 function init3DScene() {
     const container = document.getElementById('webgl-container');
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x000000); // 검은색 벽면 공간[cite: 1]
+    scene.background = new THREE.Color(0x000000);[cite: 1]
 
     camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
     camera.position.set(0, 22, 22);
@@ -309,7 +290,7 @@ function create3DBlackWalls() {
     scene.add(backWall);
 }
 
-// 캐릭터 생성 (술래 크기는 숨는 사람 키의 4배 세팅)[cite: 1]
+// 캐릭터 생성 (술래 크기 4배)[cite: 1]
 function create3DMyCharacter() {
     const loader = new THREE.TextureLoader();
     loader.load(CHAR_IMG_URL, (texture) => {
@@ -328,7 +309,7 @@ function create3DMyCharacter() {
 function animate3D() {
     requestAnimationFrame(animate3D);
 
-    // 행동 변경 시 자동 전체 흰색 변환 페널티 적용[cite: 1]
+    // 모션 이탈 시 전체 흰색 변경 페널티[cite: 1]
     if (isPenaltyWhite && myMaterial) {
         myMaterial.map = null;
         myMaterial.color.setHex(0xffffff);[cite: 1]
@@ -337,7 +318,7 @@ function animate3D() {
     renderer.render(scene, camera);
 }
 
-// MediaPipe 실시간 포즈 및 손 트래킹[cite: 1]
+// MediaPipe 모션 인식[cite: 1]
 function initMediaPipe() {
     const pose = new Pose({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`});
     pose.setOptions({ modelComplexity: 1, minDetectionConfidence: 0.5 });
@@ -357,26 +338,23 @@ function initMediaPipe() {
     cameraUtils.start();
 }
 
-// 몸 동작 인식 및 캐릭터 조종[cite: 1]
+// 몸 동작에 따른 위치/방향 이동[cite: 1]
 function onPoseResults(results) {
     if (!results.poseLandmarks || !myMesh) return;
     let lm = results.poseLandmarks;
 
-    if (isFrozen) return; // 5초 포즈 고정 시 이동 정지[cite: 1]
-    if (myRole === "tagger" && !isTagMovable) return; // 술래 2분간 이동 금지[cite: 1]
+    if (isFrozen) return;[cite: 1]
+    if (myRole === "tagger" && !isTagMovable) return;[cite: 1]
 
     let hipX = (lm[23].x + lm[24].x) / 2;
     let hipY = (lm[23].y + lm[24].y) / 2;
 
-    // 실제 몸 동작 ➔ 3D 캐릭터 위치 조종[cite: 1]
     myMesh.position.x = (0.5 - hipX) * 30;
     myMesh.position.z = (hipY - 0.5) * 30;
 
-    // 몸을 한 방향으로 틀면 방향 전환[cite: 1]
     let shoulderAngle = Math.atan2(lm[12].y - lm[11].y, lm[12].x - lm[11].x);
     myMesh.rotation.z = -shoulderAngle;
 
-    // 실시간 좌표 파이어베이스 전송
     set(ref(db, 'inGamePlayers/' + myPlayerId), {
         x: myMesh.position.x,
         z: myMesh.position.z,
@@ -384,18 +362,18 @@ function onPoseResults(results) {
         isWhite: isPenaltyWhite
     });
 
-    // 숨는 사람: 5초 동안 실제 몸 동작 고정 시 일시정지[cite: 1]
+    // 숨는 사람: 5초 포즈 고정[cite: 1]
     if (myRole === "hider" && !isFrozen) {
         if (stillStartTime === null) stillStartTime = Date.now();
         if (Date.now() - stillStartTime > 5000) {[cite: 1]
             isFrozen = true;
             freezeLandmarks = lm;
-            startPersonalTimer(); // 사용자별 개별 3분 타이머 띄우기[cite: 1]
-            alert("5초 포즈 고정 완료! 마우스로 캐릭터 색을 칠하세요.");[cite: 1]
+            startPersonalTimer();[cite: 1]
+            alert("5초 포즈 고정 완료! 팔레트로 캐릭터 색을 칠하세요.");[cite: 1]
         }
     }
 
-    // 3분 색칠 시간 종료 후 동작 이탈 감시 ➔ 이탈 시 전체 흰색 페널티[cite: 1]
+    // 3분 개별 색칠 후 포즈 감시 ➔ 이탈 시 흰색 변환[cite: 1]
     if (myRole === "hider" && isColoringDone && freezeLandmarks) {
         let diff = Math.abs(lm[15].x - freezeLandmarks[15].x) + Math.abs(lm[16].x - freezeLandmarks[16].x);
         if (diff > 0.18) {
@@ -404,7 +382,7 @@ function onPoseResults(results) {
     }
 }
 
-// 술래: 숨는 사람 발견 시 오른손 폈다 주먹 쥐면 잡기 성공[cite: 1]
+// 술래: 오른손 폈다 주먹 쥐면 잡기 성공[cite: 1]
 function onHandResults(results) {
     if (!results.multiHandLandmarks || myRole !== "tagger") return;[cite: 1]
 
@@ -421,14 +399,14 @@ function onHandResults(results) {
             }
 
             if (folding === "00000" && lastRightHandState !== "00000") {[cite: 1]
-                alert("✊ 오른손 주먹 쥐기 감지! 전방의 숨은 사람 잡기 성공!");[cite: 1]
+                alert("✊ 오른손 주먹 쥐기 감지! 숨은 사람 잡기 성공!");[cite: 1]
             }
             lastRightHandState = folding;
         }
     }
 }
 
-// 다른 플레이어 3D 위치 수신
+// 다른 플레이어 3D 위치 반영
 function listenOtherPlayers() {
     onValue(ref(db, 'inGamePlayers'), (snapshot) => {
         const players = snapshot.val() || {};
@@ -457,14 +435,14 @@ function startMainTimer() {
             let s = String(mainTime % 60).padStart(2, '0');
             document.getElementById('main-timer').innerText = `${m}:${s}`;
 
-            if (mainTime <= 480) { // 2분이 지난 시점부터 술래 움직임 가능[cite: 1]
+            if (mainTime <= 480) { // 2분 경과 시 술래 풀림[cite: 1]
                 isTagMovable = true;
             }
         }
     }, 1000);
 }
 
-// 사용자별 개별 3분 타이머 (타인은 확인 불가)[cite: 1]
+// 개별 3분 타이머[cite: 1]
 function startPersonalTimer() {
     document.getElementById('personal-timer-box').style.display = 'block';
     document.getElementById('paint-ui').style.display = 'flex';
@@ -479,12 +457,12 @@ function startPersonalTimer() {
             clearInterval(timer);
             isColoringDone = true;
             document.getElementById('paint-ui').style.display = 'none';
-            document.getElementById('personal-timer-box').innerText = "3분 색칠 종료! 고정한 동일 동작을 계속 유지하세요!";[cite: 1]
+            document.getElementById('personal-timer-box').innerText = "3분 색칠 종료! 고정한 포즈를 계속 유지하세요!";[cite: 1]
         }
     }, 1000);
 }
 
-// 위장 페인트 팔레트
+// 팔레트 캔버스
 function initColorWheel() {
     let wheel = document.getElementById('color-wheel');
     let ctx = wheel.getContext('2d');
