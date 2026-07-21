@@ -3,10 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>메차 카멜레온 3D - 명화 미술관 숨바꼭질</title>
+    <title>메차 카멜레온 3D - 명화 미술관</title>
 
-    <!-- 3D 엔진 Three.js & MediaPipe Libraries -->
+    <!-- Three.js 3D 엔진 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <!-- MediaPipe CDN -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
@@ -15,38 +17,52 @@
         * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
         body { background-color: #000; color: #fff; font-family: 'Pretendard', sans-serif; overflow: hidden; }
 
-        /* 1. 첫 접속 화면 */
+        /* 1. 시작 접속 화면 */
         #start-screen {
             position: absolute; width: 100vw; height: 100vh;
             display: flex; flex-direction: column; justify-content: center; align-items: center;
             background: linear-gradient(135deg, #090a0f, #1b1c2e); z-index: 1000;
         }
-        #start-screen h1 { font-size: 3.5rem; text-shadow: 0 0 25px rgba(0, 255, 200, 0.8); margin-bottom: 10px; }
-        #start-screen p { font-size: 1.2rem; color: #a4b0be; margin-bottom: 50px; }
-        .start-btn {
-            position: absolute; bottom: 80px; padding: 18px 60px; font-size: 1.8rem; font-weight: bold;
-            color: #fff; background: #00b894; border: none; border-radius: 50px;
-            cursor: pointer; box-shadow: 0 0 30px rgba(0, 184, 148, 0.6); transition: 0.3s;
+        #start-screen h1 { font-size: 3.2rem; text-shadow: 0 0 25px rgba(0, 255, 200, 0.8); margin-bottom: 10px; }
+        #start-screen p { font-size: 1.1rem; color: #a4b0be; margin-bottom: 20px; }
+        
+        #status-box {
+            margin-bottom: 15px; padding: 10px 25px; border-radius: 20px;
+            background: rgba(255, 255, 255, 0.08); font-size: 1.05rem; color: #f1c40f; text-align: center;
         }
-        .start-btn:hover { background: #55efc4; transform: scale(1.05); }
+        #wait-count { font-size: 1.2rem; color: #55efc4; font-weight: bold; margin-bottom: 30px; }
 
-        /* 2. 3D 인게임 화면 */
+        /* 버튼 그룹 UI */
+        .btn-group { display: flex; gap: 20px; }
+        .start-btn {
+            padding: 16px 36px; font-size: 1.3rem; font-weight: bold;
+            color: #fff; border: none; border-radius: 50px;
+            cursor: pointer; transition: 0.3s;
+        }
+        .btn-official { background: #00b894; box-shadow: 0 0 25px rgba(0, 184, 148, 0.5); }
+        .btn-official:hover { background: #55efc4; transform: scale(1.05); }
+        
+        .btn-beta { background: #e67e22; box-shadow: 0 0 25px rgba(230, 126, 34, 0.5); }
+        .btn-beta:hover { background: #f39c12; transform: scale(1.05); }
+
+        .start-btn:disabled { background: #636e72 !important; cursor: not-allowed; box-shadow: none !important; transform: none !important; }
+
+        /* 2. 3D 게임 화면 */
         #game-screen { display: none; width: 100vw; height: 100vh; position: relative; }
         #webgl-container { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
 
-        /* UI 헤더 */
+        /* UI 상단 헤더 바 */
         #ui-top-bar {
             position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
             display: flex; gap: 25px; background: rgba(0, 0, 0, 0.85);
             padding: 12px 30px; border-radius: 30px; border: 2px solid #00cec9;
             font-size: 1.2rem; font-weight: bold; z-index: 100;
-            box-shadow: 0 0 20px rgba(0,206,201,0.3);
         }
         .ui-val { color: #00cec9; font-size: 1.3rem; }
         .role-tagger { color: #ff4757 !important; }
         .role-hider { color: #2ed573 !important; }
 
-        /* 개인 색칠 타이머 */
+        /* 숨는 사람 전용 3분 타이머 (본인만 확인 가능) */
         #personal-timer-box {
             position: absolute; top: 80px; left: 50%; transform: translateX(-50%);
             background: rgba(234, 32, 39, 0.9); padding: 10px 25px; border-radius: 20px;
@@ -55,185 +71,229 @@
         }
         @keyframes pulse { 0% { transform: translateX(-50%) scale(1); } 50% { transform: translateX(-50%) scale(1.04); } 100% { transform: translateX(-50%) scale(1); } }
 
-        /* 웹캠 피드 (우측 하단) */
+        /* 웹캠 피드 */
         #webcam-container {
             position: absolute; bottom: 20px; right: 20px;
-            width: 220px; height: 165px; border: 3px solid #00cec9;
+            width: 200px; height: 150px; border: 3px solid #00cec9;
             border-radius: 15px; overflow: hidden; background: #000; z-index: 100;
         }
         #webcam { width: 100%; height: 100%; transform: scaleX(-1); object-fit: cover; }
 
-        /* 팔레트 UI */
+        /* 위장 색칠 팔레트 UI */
         #paint-ui {
-            position: absolute; top: 20px; left: 20px; width: 260px;
+            position: absolute; top: 20px; left: 20px; width: 220px;
             background: rgba(18, 18, 24, 0.92); border: 2px solid #55efc4;
-            border-radius: 20px; padding: 15px; display: none; flex-direction: column; gap: 12px;
-            z-index: 100; backdrop-filter: blur(8px);
+            border-radius: 20px; padding: 15px; display: none; flex-direction: column; gap: 10px;
+            z-index: 100;
         }
-        #paint-ui h3 { font-size: 1.1rem; color: #55efc4; text-align: center; }
+        #paint-ui h3 { font-size: 1rem; color: #55efc4; text-align: center; }
         .wheel-box { display: flex; justify-content: center; }
         #color-wheel { border-radius: 50%; cursor: crosshair; border: 2px solid #fff; }
-        .preview-row { display: flex; justify-content: space-between; align-items: center; }
-        #color-preview { width: 45px; height: 35px; border-radius: 8px; border: 2px solid #fff; background: #000; }
-        .btn-eyedropper {
-            padding: 8px 14px; background: #0984e3; color: #fff; border: none;
-            border-radius: 10px; cursor: pointer; font-size: 0.85rem; font-weight: bold;
-        }
     </style>
 </head>
 <body>
 
 <div id="app">
-    <!-- 1. 접속 대기 화면 -->
+    <!-- 1. 메인 대기 화면 -->
     <div id="start-screen">
         <h1>메차 카멜레온 3D</h1>
-        <p>명화 미술관 3D 공간 & 실시간 포즈 트래킹</p>
-        <button class="start-btn" onclick="connectAndStart()">게임 접속하기</button>
+        <p>명화 미술관 3D 모션 트래킹 숨바꼭질</p>
+        <div id="status-box">📷 카메라 권한 확인 및 서버 연결 중...</div>
+        <div id="wait-count">현재 서버 접속 대기 인원: <span id="online-users">0</span>명</div>
+        
+        <div class="btn-group">
+            <button id="official-btn" class="start-btn btn-official" disabled>🎮 5인 정식 게임 접속하기</button>
+            <button id="beta-btn" class="start-btn btn-beta" disabled>🧪 테스트용 베타 접속하기</button>
+        </div>
     </div>
 
     <!-- 2. 인게임 3D 화면 -->
     <div id="game-screen">
         <div id="webgl-container"></div>
 
-        <!-- 상단 헤더 UI -->
         <div id="ui-top-bar">
             <div>전체 시간: <span id="main-timer" class="ui-val">10:00</span></div>
             <div>나의 역할: <span id="role-display" class="ui-val">-</span></div>
             <div>생존한 숨은 사람: <span id="survivor-count" class="ui-val">4</span>명</div>
         </div>
 
-        <!-- 개인 타이머 -->
+        <!-- 숨는 사람 전용 개별 3분 색칠 타이머 -->
         <div id="personal-timer-box">나의 3분 색칠 시간: <span id="personal-timer">03:00</span></div>
 
-        <!-- 팔레트 UI -->
+        <!-- 색칠 팔레트 UI -->
         <div id="paint-ui">
             <h3>🎨 3D 위장 페인트</h3>
             <div class="wheel-box">
-                <canvas id="color-wheel" width="150" height="150"></canvas>
-            </div>
-            <div class="preview-row">
-                <div id="color-preview"></div>
-                <button class="btn-eyedropper" onclick="toggleEyedropper()">🖌️ 3D 스포이트</button>
+                <canvas id="color-wheel" width="130" height="130"></canvas>
             </div>
         </div>
 
-        <!-- 웹캠 피드 -->
         <div id="webcam-container">
             <video id="webcam" autoplay playsinline muted></video>
         </div>
     </div>
 </div>
 
-<script>
-// --- 전역 변수 및 이미지 URL ---
+<!-- 파이어베이스 모듈 스크립트 -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { getDatabase, ref, set, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+// 제공해주신 파이어베이스 설정
+const firebaseConfig = {
+  apiKey: "AIzaSyCAZWS4_kRQ77cpnp1VlfiCixMzXCG-y58",
+  authDomain: "mechcca.firebaseapp.com",
+  projectId: "mechcca",
+  storageBucket: "mechcca.firebasestorage.app",
+  messagingSenderId: "114982116645",
+  appId: "1:114982116645:web:51715383ee1d51efd6cecc",
+  measurementId: "G-HX32TFTTJT"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+// 전역 변수
+const myPlayerId = 'player_' + Math.random().toString(36).substr(2, 9);
 const CHAR_IMG_URL = "https://i.postimg.cc/nrdcqF6s/jemog-eobsneun-dijain-(1).png";
 const MAP_IMG_URLS = [
-    "https://i.postimg.cc/sXWZshGs/byeolo.jpg",     // 고흐
-    "https://i.postimg.cc/pdpFc72V/mone.jpg",       // 모네
-    "https://i.postimg.cc/rFNxDxhY/vlzkth.jpg",     // 명화 3
-    "https://i.postimg.cc/Z5D9Nc67/monalija.jpg"   // 모나리자
+    "https://i.postimg.cc/sXWZshGs/byeolo.jpg",
+    "https://i.postimg.cc/pdpFc72V/mone.jpg",
+    "https://i.postimg.cc/rFNxDxhY/vlzkth.jpg",
+    "https://i.postimg.cc/Z5D9Nc67/monalija.jpg"
 ];
 
 let scene, camera, renderer;
-let characterMesh, characterMaterial, characterTexture;
-let myRole = "hider"; // "tagger" or "hider"
-let mainTime = 600; // 10분
-let personalTime = 180; // 3분
-let isTagMovable = false; // 술래 2분 이동 제한
-let isFrozen = false; // 5초 정지 성공 여부
-let isColoringDone = false; // 3분 색칠 종료 여부
+let myMesh, myMaterial;
+let otherMeshes = {};
+let myRole = "hider"; 
+let mainTime = 600; // 전체 러닝타임 10분[cite: 1]
+let personalTime = 180; // 개인 색칠 시간 3분[cite: 1]
+let isTagMovable = false; // 술래 2분 이동 제한[cite: 1]
+let isFrozen = false; 
+let isColoringDone = false; 
 let isPenaltyWhite = false;
 
 let videoElement = document.getElementById('webcam');
+let statusBox = document.getElementById('status-box');
+let officialBtn = document.getElementById('official-btn');
+let betaBtn = document.getElementById('beta-btn');
+let onlineUsersEl = document.getElementById('online-users');
+
 let freezeLandmarks = null;
 let stillStartTime = null;
-let selectedColor = "#000000";
-let isEyedropperActive = false;
 let lastRightHandState = "";
 
-// 1. 게임 접속 및 카메라 권한 승인
-async function connectAndStart() {
+// 로드 시 카메라 및 로비 인원 감시 시작
+window.addEventListener('DOMContentLoaded', async () => {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
         videoElement.srcObject = stream;
+        
+        statusBox.innerText = "✅ 카메라 준비 완료! 원하는 모드를 선택해 접속하세요.";
+        statusBox.style.color = "#2ecc71";
+        officialBtn.disabled = false;
+        betaBtn.disabled = false;
 
-        document.getElementById('start-screen').style.display = 'none';
-        document.getElementById('game-screen').style.display = 'block';
-
-        // 술래 무작위 지정 (20% 확률)[cite: 1]
-        myRole = (Math.random() < 0.2) ? "tagger" : "hider";[cite: 1]
-        let roleDisplay = document.getElementById('role-display');
-
-        if (myRole === "tagger") {
-            roleDisplay.innerText = "👹 술래 (크기 4배)";[cite: 1]
-            roleDisplay.className = "ui-val role-tagger";
-        } else {
-            roleDisplay.innerText = "🥷 숨는 사람";
-            roleDisplay.className = "ui-val role-hider";
-        }
-
-        init3DScene();
-        initColorWheel();
         initMediaPipe();
-        startMainTimer();
-
     } catch (err) {
-        alert("카메라 권한을 승인해야 게임 진행이 가능합니다.");
-        console.error(err);
+        statusBox.innerText = "❌ 카메라 권한이 필요합니다. 브라우저 설정을 확인해 주세요.";
+        statusBox.style.color = "#e74c3c";
     }
+
+    // 대기열 및 접속자 카운트 모니터링[cite: 1]
+    const lobbyRef = ref(db, 'lobby/' + myPlayerId);
+    set(lobbyRef, { online: true });
+    onDisconnect(lobbyRef).remove();
+
+    onValue(ref(db, 'lobby'), (snapshot) => {
+        const players = snapshot.val() || {};
+        const count = Object.keys(players).length;
+        onlineUsersEl.innerText = count;
+
+        // 5명이 모이면 정식 매칭 준비 완료
+        if (count >= 5) {
+            statusBox.innerText = "🎉 5명이 모두 모였습니다! [5인 정식 게임 접속하기]를 누르세요!";
+        }
+    });
+});
+
+// A. 정식 5인 게임 접속 버튼 클릭 이벤트[cite: 1]
+officialBtn.addEventListener('click', () => {
+    onValue(ref(db, 'lobby'), (snapshot) => {
+        const players = snapshot.val() || {};
+        const playerIds = Object.keys(players);
+
+        // 정식 매칭 시 5명 중 1명을 술래로 지정[cite: 1]
+        let taggerId = playerIds[Math.floor(Math.random() * playerIds.length)];
+        myRole = (taggerId === myPlayerId) ? "tagger" : "hider";[cite: 1]
+        enterGame3D();
+    }, { onlyOnce: true });
+});
+
+// B. 테스트용 베타 접속 버튼 클릭 이벤트
+betaBtn.addEventListener('click', () => {
+    // 테스트용: 20% 확률로 무작위 술래 결정[cite: 1]
+    myRole = (Math.random() < 0.2) ? "tagger" : "hider";[cite: 1]
+    enterGame3D();
+});
+
+// 3D 인게임 입장
+function enterGame3D() {
+    document.getElementById('start-screen').style.display = 'none';
+    document.getElementById('game-screen').style.display = 'block';
+
+    let roleDisplay = document.getElementById('role-display');
+    if (myRole === "tagger") {
+        roleDisplay.innerText = "👹 술래 (크기 4배)";[cite: 1]
+        roleDisplay.className = "ui-val role-tagger";
+    } else {
+        roleDisplay.innerText = "🥷 숨는 사람";
+        roleDisplay.className = "ui-val role-hider";
+    }
+
+    init3DScene();
+    initColorWheel();
+    startMainTimer();
+    listenOtherPlayers();
 }
 
-// 2. 3D 공간 구축 (Three.js)
+// Three.js 3D 공간 생성
 function init3DScene() {
     const container = document.getElementById('webgl-container');
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x000000); // 3D 공간 벽면/배경 = 검정색
+    scene.background = new THREE.Color(0x000000); // 검은색 벽면 공간[cite: 1]
 
-    // 시점: 공중에서 입체적으로 내려다보는 카메라
     camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 25, 25);
+    camera.position.set(0, 22, 22);
     camera.lookAt(0, 0, 0);
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.shadowMap.enabled = true;
     container.appendChild(renderer.domElement);
 
-    // 조명
-    const ambient = new THREE.AmbientLight(0xffffff, 0.8);
-    scene.add(ambient);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.9));
 
-    // A. 3D 바닥: 4개의 명화 패널을 3D 바닥(X-Z 평면)으로 깔기
     create3DMasterpieceFloor();
-
-    // B. 3D 검은색 벽면 생성
     create3DBlackWalls();
-
-    // C. 주인공 3D 캐릭터 (바닥과 수직으로 서도록 스프라이트/메쉬 배치)
-    create3DCharacter();
+    create3DMyCharacter();
 
     window.addEventListener('resize', onWindowResize);
     animate3D();
 }
 
-// 명화 바닥 (X-Z 평면)
+// 명화 4종 바닥
 function create3DMasterpieceFloor() {
     const loader = new THREE.TextureLoader();
-    const size = 20; // 각 패널 크기
-
+    const size = 18;
     MAP_IMG_URLS.forEach((url, idx) => {
         loader.load(url, (texture) => {
             const geo = new THREE.PlaneGeometry(size, size);
-            const mat = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.4 });
+            const mat = new THREE.MeshStandardMaterial({ map: texture });
             const mesh = new THREE.Mesh(geo, mat);
-
-            mesh.rotation.x = -Math.PI / 2; // 바닥 평면으로 회전
-            
-            // 2x2 패치워크 배치
+            mesh.rotation.x = -Math.PI / 2;
             mesh.position.x = (idx % 2 === 0) ? -size/2 : size/2;
             mesh.position.z = (idx < 2) ? -size/2 : size/2;
-            mesh.position.y = 0;
-
             scene.add(mesh);
         });
     });
@@ -242,128 +302,109 @@ function create3DMasterpieceFloor() {
 // 3D 검은색 벽면
 function create3DBlackWalls() {
     const wallMat = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide });
-    const wallGeo = new THREE.PlaneGeometry(40, 20);
+    const wallGeo = new THREE.PlaneGeometry(36, 18);
 
-    // 뒷벽, 좌벽, 우벽
     const backWall = new THREE.Mesh(wallGeo, wallMat);
-    backWall.position.set(0, 10, -20);
+    backWall.position.set(0, 9, -18);
     scene.add(backWall);
-
-    const leftWall = new THREE.Mesh(wallGeo, wallMat);
-    leftWall.rotation.y = Math.PI / 2;
-    leftWall.position.set(-20, 10, 0);
-    scene.add(leftWall);
-
-    const rightWall = new THREE.Mesh(wallGeo, wallMat);
-    rightWall.rotation.y = -Math.PI / 2;
-    rightWall.position.set(20, 10, 0);
-    scene.add(rightWall);
 }
 
-// 3D 캐릭터 (바닥과 수직으로 생성)
-function create3DCharacter() {
+// 캐릭터 생성 (술래 크기는 숨는 사람 키의 4배 세팅)[cite: 1]
+function create3DMyCharacter() {
     const loader = new THREE.TextureLoader();
     loader.load(CHAR_IMG_URL, (texture) => {
-        characterTexture = texture;
-        
-        // 술래는 숨는 사람의 4배 크기[cite: 1]
         let scale = (myRole === "tagger") ? 4.0 : 1.0;[cite: 1]
-        let w = 4 * scale;
-        let h = 4 * scale;
+        let w = 3.5 * scale;
+        let h = 3.5 * scale;
 
         const geo = new THREE.PlaneGeometry(w, h);
-        characterMaterial = new THREE.MeshStandardMaterial({
-            map: texture,
-            transparent: true,
-            alphaTest: 0.1,
-            side: THREE.DoubleSide
-        });
-
-        characterMesh = new THREE.Mesh(geo, characterMaterial);
-        
-        // **바닥과 정확히 수직(Standing) 상태 세팅**
-        characterMesh.position.set(0, h / 2, 0);
-        scene.add(characterMesh);
+        myMaterial = new THREE.MeshStandardMaterial({ map: texture, transparent: true, alphaTest: 0.1 });
+        myMesh = new THREE.Mesh(geo, myMaterial);
+        myMesh.position.set(0, h / 2, 0);
+        scene.add(myMesh);
     });
 }
 
 function animate3D() {
     requestAnimationFrame(animate3D);
 
-    // 페널티 적용 시 흰색으로 변환
-    if (isPenaltyWhite && characterMaterial) {
-        characterMaterial.map = null;
-        characterMaterial.color.setHex(0xffffff);
+    // 행동 변경 시 자동 전체 흰색 변환 페널티 적용[cite: 1]
+    if (isPenaltyWhite && myMaterial) {
+        myMaterial.map = null;
+        myMaterial.color.setHex(0xffffff);[cite: 1]
     }
 
     renderer.render(scene, camera);
 }
 
-// 3. MediaPipe 실시간 트래킹 (웹캠 ➔ 3D 캐릭터 관절/좌표 연동)
+// MediaPipe 실시간 포즈 및 손 트래킹[cite: 1]
 function initMediaPipe() {
-    const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-    hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.5 });
-    hands.onResults(onHandResults);
-
     const pose = new Pose({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`});
     pose.setOptions({ modelComplexity: 1, minDetectionConfidence: 0.5 });
     pose.onResults(onPoseResults);
 
+    const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+    hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.5 });
+    hands.onResults(onHandResults);
+
     const cameraUtils = new Camera(videoElement, {
         onFrame: async () => {
-            await hands.send({image: videoElement});
             await pose.send({image: videoElement});
+            await hands.send({image: videoElement});
         },
         width: 640, height: 480
     });
     cameraUtils.start();
 }
 
-// 사람의 움직임(Pose) 트래킹 ➔ 3D 캐릭터 실시간 좌표/관절 연동
+// 몸 동작 인식 및 캐릭터 조종[cite: 1]
 function onPoseResults(results) {
-    if (!results.poseLandmarks || !characterMesh) return;
+    if (!results.poseLandmarks || !myMesh) return;
     let lm = results.poseLandmarks;
 
-    if (isFrozen) return; // 5초 정지 시 위치 고정[cite: 1]
-    if (myRole === "tagger" && !isTagMovable) return; // 술래 2분 이동 제한[cite: 1]
+    if (isFrozen) return; // 5초 포즈 고정 시 이동 정지[cite: 1]
+    if (myRole === "tagger" && !isTagMovable) return; // 술래 2분간 이동 금지[cite: 1]
 
-    // **관절 좌표 매핑 (실제 몸의 엉덩이/어깨 중앙점을 3D 공간 좌표로 계산)**
     let hipX = (lm[23].x + lm[24].x) / 2;
     let hipY = (lm[23].y + lm[24].y) / 2;
 
-    // MediaPipe 좌표계 (0~1) ➔ 3D 공간 (X: -18 ~ 18, Z: -18 ~ 18) 변환
-    let targetX = (0.5 - hipX) * 36; 
-    let targetZ = (hipY - 0.5) * 36;
+    // 실제 몸 동작 ➔ 3D 캐릭터 위치 조종[cite: 1]
+    myMesh.position.x = (0.5 - hipX) * 30;
+    myMesh.position.z = (hipY - 0.5) * 30;
 
-    // 실시간 캐릭터 3D 위치 반영
-    characterMesh.position.x = targetX;
-    characterMesh.position.z = targetZ;
-
-    // 좌/우 상체 기울임(어깨 기울기)을 3D 캐릭터 회전에 반영
+    // 몸을 한 방향으로 틀면 방향 전환[cite: 1]
     let shoulderAngle = Math.atan2(lm[12].y - lm[11].y, lm[12].x - lm[11].x);
-    characterMesh.rotation.z = -shoulderAngle;
+    myMesh.rotation.z = -shoulderAngle;
 
-    // --- A. 5초 포즈 정지 감지 ---
+    // 실시간 좌표 파이어베이스 전송
+    set(ref(db, 'inGamePlayers/' + myPlayerId), {
+        x: myMesh.position.x,
+        z: myMesh.position.z,
+        role: myRole,
+        isWhite: isPenaltyWhite
+    });
+
+    // 숨는 사람: 5초 동안 실제 몸 동작 고정 시 일시정지[cite: 1]
     if (myRole === "hider" && !isFrozen) {
         if (stillStartTime === null) stillStartTime = Date.now();
         if (Date.now() - stillStartTime > 5000) {[cite: 1]
             isFrozen = true;
             freezeLandmarks = lm;
-            startPersonalTimer(); // 3분 색칠 시작[cite: 1]
-            alert("5초 포즈 고정 완료! 이제 마우스로 캐릭터에 색을 칠하세요.");[cite: 1]
+            startPersonalTimer(); // 사용자별 개별 3분 타이머 띄우기[cite: 1]
+            alert("5초 포즈 고정 완료! 마우스로 캐릭터 색을 칠하세요.");[cite: 1]
         }
     }
 
-    // --- B. 3분 색칠 종료 후 포즈 이탈 감시 ---
+    // 3분 색칠 시간 종료 후 동작 이탈 감시 ➔ 이탈 시 전체 흰색 페널티[cite: 1]
     if (myRole === "hider" && isColoringDone && freezeLandmarks) {
         let diff = Math.abs(lm[15].x - freezeLandmarks[15].x) + Math.abs(lm[16].x - freezeLandmarks[16].x);
         if (diff > 0.18) {
-            isPenaltyWhite = true; // 포즈 이탈 시 흰색 변환 페널티[cite: 1]
+            isPenaltyWhite = true;[cite: 1]
         }
     }
 }
 
-// 술래 오른손 잡기 (손 펴짐 -> 주먹 쥐기 00000)[cite: 1]
+// 술래: 숨는 사람 발견 시 오른손 폈다 주먹 쥐면 잡기 성공[cite: 1]
 function onHandResults(results) {
     if (!results.multiHandLandmarks || myRole !== "tagger") return;[cite: 1]
 
@@ -380,14 +421,34 @@ function onHandResults(results) {
             }
 
             if (folding === "00000" && lastRightHandState !== "00000") {[cite: 1]
-                alert("오른손 주먹 쥐기 감지! 전방의 숨은 사람을 잡았습니다!");[cite: 1]
+                alert("✊ 오른손 주먹 쥐기 감지! 전방의 숨은 사람 잡기 성공!");[cite: 1]
             }
             lastRightHandState = folding;
         }
     }
 }
 
-// 4. 타이머 시스템[cite: 1]
+// 다른 플레이어 3D 위치 수신
+function listenOtherPlayers() {
+    onValue(ref(db, 'inGamePlayers'), (snapshot) => {
+        const players = snapshot.val() || {};
+        Object.keys(players).forEach((id) => {
+            if (id !== myPlayerId) {
+                const p = players[id];
+                if (!otherMeshes[id]) {
+                    let scale = (p.role === "tagger") ? 4.0 : 1.0;[cite: 1]
+                    const geo = new THREE.PlaneGeometry(3.5 * scale, 3.5 * scale);
+                    const mat = new THREE.MeshStandardMaterial({ color: 0x00cec9 });
+                    otherMeshes[id] = new THREE.Mesh(geo, mat);
+                    scene.add(otherMeshes[id]);
+                }
+                otherMeshes[id].position.set(p.x, (p.role === "tagger" ? 7 : 1.75), p.z);
+            }
+        });
+    });
+}
+
+// 타이머 시스템[cite: 1]
 function startMainTimer() {
     setInterval(() => {
         if (mainTime > 0) {
@@ -396,13 +457,14 @@ function startMainTimer() {
             let s = String(mainTime % 60).padStart(2, '0');
             document.getElementById('main-timer').innerText = `${m}:${s}`;
 
-            if (mainTime <= 480) { // 2분 후 술래 이동 가능[cite: 1]
+            if (mainTime <= 480) { // 2분이 지난 시점부터 술래 움직임 가능[cite: 1]
                 isTagMovable = true;
             }
         }
     }, 1000);
 }
 
+// 사용자별 개별 3분 타이머 (타인은 확인 불가)[cite: 1]
 function startPersonalTimer() {
     document.getElementById('personal-timer-box').style.display = 'block';
     document.getElementById('paint-ui').style.display = 'flex';
@@ -417,12 +479,12 @@ function startPersonalTimer() {
             clearInterval(timer);
             isColoringDone = true;
             document.getElementById('paint-ui').style.display = 'none';
-            document.getElementById('personal-timer-box').innerText = "3분 색칠 종료! 동일한 포즈를 고정하세요!";[cite: 1]
+            document.getElementById('personal-timer-box').innerText = "3분 색칠 종료! 고정한 동일 동작을 계속 유지하세요!";[cite: 1]
         }
     }, 1000);
 }
 
-// 5. 팔레트 & 3D 스포이트
+// 위장 페인트 팔레트
 function initColorWheel() {
     let wheel = document.getElementById('color-wheel');
     let ctx = wheel.getContext('2d');
@@ -443,20 +505,10 @@ function initColorWheel() {
 
     wheel.addEventListener('click', (e) => {
         let rect = wheel.getBoundingClientRect();
-        let x = e.clientX - rect.left;
-        let y = e.clientY - rect.top;
-        let imgData = ctx.getImageData(x, y, 1, 1).data;
-        selectedColor = `rgb(${imgData[0]}, ${imgData[1]}, ${imgData[2]})`;
-        document.getElementById('color-preview').style.background = selectedColor;
-        
-        if (characterMaterial) {
-            characterMaterial.color.setStyle(selectedColor); // 3D 캐릭터 색상 변환
-        }
+        let imgData = ctx.getImageData(e.clientX - rect.left, e.clientY - rect.top, 1, 1).data;
+        let color = `rgb(${imgData[0]}, ${imgData[1]}, ${imgData[2]})`;
+        if (myMaterial) myMaterial.color.setStyle(color);
     });
-}
-
-function toggleEyedropper() {
-    alert("3D 스포이트 활성화: 바닥 명화를 클릭하면 3D 캐릭터 색상이 해당 명화 색으로 바뀝니다.");
 }
 
 function onWindowResize() {
